@@ -49,13 +49,18 @@ class IsCoopMember(permissions.BasePermission):
         return bool(request.user and request.user.is_authenticated)
 
 
+
 class IsRegionalAuditor(permissions.BasePermission):
     def has_permission(self, request, view):
+        user = request.user
+
         return bool(
-            request.user
-            and request.user.is_authenticated
-            and request.user.role in ("REGIONAL_AUDITOR", "NATIONAL_ADMIN", "AGENT_SERVICE")
+            user
+            and user.is_authenticated
+            and user.role in ("REGIONAL_AUDITOR", "NATIONAL_ADMIN")
+            and request.method in permissions.SAFE_METHODS
         )
+
 
 
 class IsNationalAdmin(permissions.BasePermission):
@@ -65,6 +70,71 @@ class IsNationalAdmin(permissions.BasePermission):
             and request.user.is_authenticated
             and request.user.role == "NATIONAL_ADMIN"
         )
+
+class ZKReceiptPermission(permissions.BasePermission):
+    def has_permission(self, request, view):
+        user = request.user
+
+        return bool(
+            user
+            and user.is_authenticated
+            and user.role in (
+                "COOP_MEMBER",
+                "REGIONAL_AUDITOR",
+                "NATIONAL_ADMIN",
+            )
+            and request.method in permissions.SAFE_METHODS
+        )
+
+class CooperativeUnitPermission(permissions.BasePermission):
+    def has_permission(self, request, view):
+        user = request.user
+
+        if not user or not user.is_authenticated:
+            return False
+
+        if user.role == "NATIONAL_ADMIN":
+            return True
+
+        if user.role in ("COOP_MEMBER", "REGIONAL_AUDITOR"):
+            return request.method in permissions.SAFE_METHODS
+
+        return False
+
+    def has_object_permission(self, request, view, obj):
+        user = request.user
+
+        if user.role == "NATIONAL_ADMIN":
+            return True
+
+        if user.role == "COOP_MEMBER":
+            return obj.memberships.filter(
+                user=user,
+                is_active=True
+            ).exists()
+
+        if user.role == "REGIONAL_AUDITOR":
+            return obj.governorate == user.governorate
+
+        return False
+
+
+class TelemetryReadingPermission(permissions.BasePermission):
+    def has_permission(self, request, view):
+        user = request.user
+
+        if not user or not user.is_authenticated:
+            return False
+
+        if user.role in (
+            "COOP_MEMBER",
+            "REGIONAL_AUDITOR",
+            "NATIONAL_ADMIN",
+        ):
+            return request.method in permissions.SAFE_METHODS
+
+        return False
+
 
 
 # ============================================================================
@@ -111,28 +181,114 @@ class AgentLoopExecutionSerializer(serializers.ModelSerializer):
 # ============================================================================
 # 4. DRF ViewSets & Darja Intent Webhook
 # ============================================================================
+
 class CooperativeUnitViewSet(viewsets.ModelViewSet):
-    queryset = CooperativeUnit.objects.all().order_by("-created_at")
     serializer_class = CooperativeUnitSerializer
-    permission_classes = [IsCoopMember]
+    permission_classes = [CooperativeUnitPermission]
+
+    def get_queryset(self):
+        user = self.request.user
+
+        if user.role == "NATIONAL_ADMIN":
+            return CooperativeUnit.objects.all().order_by("-created_at")
+
+        if user.role == "COOP_MEMBER":
+            return CooperativeUnit.objects.filter(
+                memberships__user=user,
+                memberships__is_active=True
+            ).distinct().order_by("-created_at")
+
+        if user.role == "REGIONAL_AUDITOR":
+            return CooperativeUnit.objects.filter(
+                governorate=user.governorate
+            ).order_by("-created_at")
+
+        return CooperativeUnit.objects.none()
+
+
 
 
 class TelemetryReadingViewSet(viewsets.ModelViewSet):
-    queryset = TelemetryReading.objects.select_related("node").order_by("-timestamp")
     serializer_class = TelemetryReadingSerializer
-    permission_classes = [IsCoopMember]
+    permission_classes = [TelemetryReadingPermission]
+
+    def get_queryset(self):
+        user = self.request.user
+
+        queryset = TelemetryReading.objects.select_related(
+            "node",
+            "node__coop",
+        ).order_by("-timestamp")
+
+        if user.role == "NATIONAL_ADMIN":
+            return queryset
+
+        if user.role == "COOP_MEMBER":
+            return queryset.filter(
+                node__coop__memberships__user=user,
+                node__coop__memberships__is_active=True,
+            ).distinct()
+
+        if user.role == "REGIONAL_AUDITOR":
+            return queryset.filter(
+                node__coop__governorate=user.governorate
+            )
+
+        return queryset.none()
+
 
 
 class AnomalyAndForecastEventViewSet(viewsets.ModelViewSet):
-    queryset = AnomalyAndForecastEvent.objects.select_related("node").order_by("-detected_at")
     serializer_class = AnomalyAndForecastEventSerializer
     permission_classes = [IsRegionalAuditor]
 
+    def get_queryset(self):
+        user = self.request.user
+
+        queryset = AnomalyAndForecastEvent.objects.select_related(
+            "node",
+            "node__coop",
+        ).order_by("-detected_at")
+
+        if user.role == "NATIONAL_ADMIN":
+            return queryset
+
+        if user.role == "REGIONAL_AUDITOR":
+            return queryset.filter(
+                node__coop__governorate=user.governorate
+            )
+
+        return queryset.none()
+
+
 
 class OnChainZKReceiptViewSet(viewsets.ReadOnlyModelViewSet):
-    queryset = OnChainZKReceipt.objects.select_related("agent_execution").order_by("-block_number")
     serializer_class = OnChainZKReceiptSerializer
-    permission_classes = [IsCoopMember]
+    permission_classes = [ZKReceiptPermission]
+
+    def get_queryset(self):
+        user = self.request.user
+
+        queryset = OnChainZKReceipt.objects.select_related(
+            "agent_execution",
+            "agent_execution__coop",
+        ).order_by("-block_number")
+
+        if user.role == "NATIONAL_ADMIN":
+            return queryset
+
+        if user.role == "COOP_MEMBER":
+            return queryset.filter(
+                agent_execution__coop__memberships__user=user,
+                agent_execution__coop__memberships__is_active=True,
+            ).distinct()
+
+        if user.role == "REGIONAL_AUDITOR":
+            return queryset.filter(
+                agent_execution__coop__governorate=user.governorate
+            )
+
+        return queryset.none()
 
 
 @api_view(["POST"])
