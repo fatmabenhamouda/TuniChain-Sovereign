@@ -51,8 +51,8 @@ def run_sovereign_agent_loop(initial_state: SovereignAgentState) -> SovereignAge
     req_units = state["parsed_intent"]["requested_units"]
     mcp_res = calculate_sovereign_quota_allocation(
         governorate=gov,
-        soil_moisture_pct=state["moisture_pct"],
-        temp_c=state["temp_c"],
+        current_metric_value=state["moisture_pct"],
+        ambient_temp_c=state["temp_c"],
         requested_units=req_units,
     )
     state["mcp_allocation"] = mcp_res
@@ -63,7 +63,7 @@ def run_sovereign_agent_loop(initial_state: SovereignAgentState) -> SovereignAge
     state["zk_receipt"] = s3.execute(
         node_code=state["node_code"],
         governorate=gov,
-        approved_units=mcp_res["approved_units"],
+        approved_units=mcp_res["recommended_units"],
         max_quota=mcp_res["max_daily_quota"],
         thread_id=state["thread_id"],
     )
@@ -74,7 +74,7 @@ def run_sovereign_agent_loop(initial_state: SovereignAgentState) -> SovereignAge
         f"Parsed Darja request for {gov} (Node {state['node_code']}). "
         f"Anomaly status: {state['anomaly_report']['severity']} "
         f"(confidence={state['anomaly_report']['anomaly_confidence']}). "
-        f"MCP approved {mcp_res['approved_units']} units (<= {mcp_res['max_daily_quota']} max quota). "
+        f"MCP approved {mcp_res['recommended_units']} units (<= {mcp_res['max_daily_quota']} max quota). "
         f"Anchored ZK Commitment {state['zk_receipt']['zk_commitment_hash'][:18]}... "
         f"in Tx {state['zk_receipt']['tx_hash'][:18]}..."
     )
