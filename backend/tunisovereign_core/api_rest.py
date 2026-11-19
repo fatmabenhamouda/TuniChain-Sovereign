@@ -10,6 +10,7 @@ from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.response import Response
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from rest_framework_simplejwt.views import TokenObtainPairView
+from rest_framework.filters import SearchFilter, OrderingFilter
 
 from .models import (
     StakeholderUser,
@@ -172,6 +173,12 @@ class TelemetryReadingPermission(permissions.BasePermission):
 # 3. Model Serializers
 # ============================================================================
 class CooperativeUnitSerializer(serializers.ModelSerializer):
+    def validate_daily_quota_limit(self, value):
+        if value <= 0:
+            raise serializers.ValidationError(
+                "Daily quota limit must be greater than zero."
+            )
+        return value
     class Meta:
         model = CooperativeUnit
         fields = "__all__"
@@ -253,40 +260,50 @@ class AgentLoopExecutionSerializer(serializers.ModelSerializer):
 class CooperativeUnitViewSet(viewsets.ModelViewSet):
     serializer_class = CooperativeUnitSerializer
     permission_classes = [CooperativeUnitPermission]
+    filter_backends = [SearchFilter, OrderingFilter]
+    search_fields = ["name", "governorate", "track_domain"]
+    ordering_fields = ["name", "governorate", "created_at"]
+    ordering = ["-created_at"]
 
     def get_queryset(self):
         user = self.request.user
 
         if user.role == "NATIONAL_ADMIN":
-            return CooperativeUnit.objects.all().order_by("-created_at")
+            return CooperativeUnit.objects.all()
 
         if user.role == "COOP_MEMBER":
             return CooperativeUnit.objects.filter(
                 memberships__user=user,
                 memberships__is_active=True
-            ).distinct().order_by("-created_at")
+            ).distinct()
 
         if user.role == "REGIONAL_AUDITOR":
             return CooperativeUnit.objects.filter(
                 governorate=user.governorate
-            ).order_by("-created_at")
+            )
 
         return CooperativeUnit.objects.none()
-
-
 
 
 class TelemetryReadingViewSet(viewsets.ModelViewSet):
     serializer_class = TelemetryReadingSerializer
     permission_classes = [TelemetryReadingPermission]
+    filter_backends = [SearchFilter, OrderingFilter]
+    search_fields = [
+        "metric_type",
+        "ingestion_protocol",
+        "node__node_code",
+        "node__crop_or_sector_type",
+    ]
+    ordering_fields = ["timestamp", "value", "metric_type"]
+    ordering = ["-timestamp"]
 
     def get_queryset(self):
         user = self.request.user
 
         queryset = TelemetryReading.objects.select_related(
-            "node",
-            "node__coop",
-        ).order_by("-timestamp")
+            "node", "node__coop"
+        )
 
         if user.role == "NATIONAL_ADMIN":
             return queryset
@@ -305,18 +322,25 @@ class TelemetryReadingViewSet(viewsets.ModelViewSet):
         return queryset.none()
 
 
-
 class AnomalyAndForecastEventViewSet(viewsets.ModelViewSet):
     serializer_class = AnomalyAndForecastEventSerializer
     permission_classes = [IsRegionalAuditor]
+    filter_backends = [SearchFilter, OrderingFilter]
+    search_fields = ["anomaly_type", "severity", "node__node_code"]
+    ordering_fields = [
+        "detected_at",
+        "severity",
+        "isolation_forest_score",
+        "forecasted_deficit_24h",
+    ]
+    ordering = ["-detected_at"]
 
     def get_queryset(self):
         user = self.request.user
 
         queryset = AnomalyAndForecastEvent.objects.select_related(
-            "node",
-            "node__coop",
-        ).order_by("-detected_at")
+            "node", "node__coop"
+        )
 
         if user.role == "NATIONAL_ADMIN":
             return queryset
@@ -329,10 +353,13 @@ class AnomalyAndForecastEventViewSet(viewsets.ModelViewSet):
         return queryset.none()
 
 
-
 class OnChainZKReceiptViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = OnChainZKReceiptSerializer
     permission_classes = [ZKReceiptPermission]
+    filter_backends = [SearchFilter, OrderingFilter]
+    search_fields = ["network_name", "tx_hash", "zk_commitment_hash"]
+    ordering_fields = ["block_number", "network_name"]
+    ordering = ["-block_number"]
 
     def get_queryset(self):
         user = self.request.user
@@ -340,7 +367,7 @@ class OnChainZKReceiptViewSet(viewsets.ReadOnlyModelViewSet):
         queryset = OnChainZKReceipt.objects.select_related(
             "agent_execution",
             "agent_execution__coop",
-        ).order_by("-block_number")
+        )
 
         if user.role == "NATIONAL_ADMIN":
             return queryset
