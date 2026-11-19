@@ -1,22 +1,18 @@
-"""
-gRPC Telemetry Ingestion & Urgent Audit Server (proto3 + grpcio)
-Implements TelemetryIngestService defined in protos/tunisovereign.proto.
-"""
 import os
 import sys
-import time
 from concurrent import futures
+
 import grpc
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+import tunisovereign_pb2 as pb2
+import tunisovereign_pb2_grpc as pb2_grpc
+
 from agent.langgraph_agent import run_sovereign_agent_loop
 
 
-class TelemetryIngestServicer:
-    """
-    Contract-first binary gRPC servicer for high-frequency Tunisian sensor/cooperative
-    telemetry streams and urgent anomaly-triggered LangGraph audits.
-    """
+class TelemetryIngestServicer(pb2_grpc.TelemetryIngestServiceServicer):
 
     def StreamTelemetry(self, request_iterator, context):
         accepted = 0
@@ -25,13 +21,18 @@ class TelemetryIngestServicer:
 
         for packet in request_iterator:
             accepted += 1
+
             if packet.metric_type == "MOISTURE" and packet.value < 35.0:
                 anomaly_triggered = True
                 thread_id = f"grpc-auto-{packet.node_code}-{accepted}"
+
                 run_sovereign_agent_loop({
                     "thread_id": thread_id,
                     "node_code": packet.node_code,
-                    "darja_input": f"Automated gRPC alert in {packet.governorate}: moisture dropped to {packet.value}%",
+                    "darja_input": (
+                        f"Automated gRPC alert in {packet.governorate}: "
+                        f"moisture dropped to {packet.value}%"
+                    ),
                     "moisture_pct": float(packet.value),
                     "temp_c": 36.5,
                     "flow_l_min": 180.0,
@@ -42,14 +43,16 @@ class TelemetryIngestServicer:
                     "skills_trace": [],
                     "final_explanation": "",
                 })
-        return {
-            "accepted_count": accepted,
-            "anomaly_triggered": anomaly_triggered,
-            "agent_thread_id": thread_id,
-        }
+
+        return pb2.IngestAck(
+            accepted_count=accepted,
+            anomaly_triggered=anomaly_triggered,
+            agent_thread_id=thread_id,
+        )
 
     def TriggerUrgentAudit(self, request, context):
         thread_id = f"grpc-urgent-{request.node_code}"
+
         res = run_sovereign_agent_loop({
             "thread_id": thread_id,
             "node_code": request.node_code,
@@ -64,20 +67,27 @@ class TelemetryIngestServicer:
             "skills_trace": [],
             "final_explanation": "",
         })
-        return {
-            "status": "VERIFIED_AND_ANCHORED",
-            "tx_hash": res["zk_receipt"]["tx_hash"],
-        }
+
+        return pb2.AuditResponse(
+            status="VERIFIED_AND_ANCHORED",
+            tx_hash=res["zk_receipt"]["tx_hash"],
+        )
 
 
 def serve(port: int = 50051):
     server = grpc.server(futures.ThreadPoolExecutor(max_workers=8))
+
+    pb2_grpc.add_TelemetryIngestServiceServicer_to_server(
+        TelemetryIngestServicer(), server
+    )
+
     server.add_insecure_port(f"[::]:{port}")
-    print(f"[TuniSovereign-AI gRPC Server] Listening on port {port} (proto3 binary transport)...")
+    print(f"[TuniSovereign-AI gRPC Server] Listening on port {port}...")
+
     server.start()
+
     try:
-        while True:
-            time.sleep(3600)
+        server.wait_for_termination()
     except KeyboardInterrupt:
         server.stop(0)
 
