@@ -27,6 +27,7 @@ from tunisovereign_core.api_rest import (
     AnomalyAndForecastEventViewSet,
     OnChainZKReceiptViewSet,
     darja_intent_webhook,
+    RegisterView,
 )
 
 # Router REST API
@@ -42,7 +43,8 @@ urlpatterns = [
     # JWT Authentication
     path("api/auth/login/", SovereignTokenObtainPairView.as_view(), name="token_obtain_pair"),
     path("api/auth/refresh/", TokenRefreshView.as_view(), name="token_refresh"),
-
+    path("api/auth/register/", RegisterView.as_view(), name="register"),    
+    
     # REST API
     path("api/v1/", include(router.urls)),
 

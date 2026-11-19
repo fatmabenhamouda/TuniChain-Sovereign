@@ -5,7 +5,7 @@ Exposes:
 - GET/POST /api/v1/cooperatives/, /api/v1/telemetry/, /api/v1/anomalies/, /api/v1/zk-receipts/
 - POST /api/v1/darja-intent/ (Ingests Tunisian Darja voice transcript or text and triggers LangGraph loop)
 """
-from rest_framework import serializers, viewsets, permissions, status
+from rest_framework import serializers, viewsets, permissions, status, generics
 from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.response import Response
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
@@ -22,6 +22,37 @@ from .models import (
 )
 from agent.langgraph_agent import run_sovereign_agent_loop
 
+# ============================================================================
+# 0. User Registration Serializer
+# ============================================================================
+class RegisterSerializer(serializers.ModelSerializer):
+    password = serializers.CharField(
+        write_only=True,
+        required=True,
+        min_length=8
+    )
+
+    class Meta:
+        model = StakeholderUser
+        fields = ("username", "email", "password")
+
+    def create(self, validated_data):
+        user = StakeholderUser(
+            username=validated_data["username"],
+            email=validated_data["email"],
+            role=StakeholderUser.Role.COOP_MEMBER,
+        )
+        user.set_password(validated_data["password"])
+        user.save()
+        return user
+
+# ============================================================================
+# 0. User Registration View
+# ============================================================================
+class RegisterView(generics.CreateAPIView):
+    queryset = StakeholderUser.objects.all()
+    serializer_class = RegisterSerializer
+    permission_classes = [permissions.AllowAny]
 
 # ============================================================================
 # 1. Custom SimpleJWT Claims Serializer (Role, Governorate & Wallet Address)
