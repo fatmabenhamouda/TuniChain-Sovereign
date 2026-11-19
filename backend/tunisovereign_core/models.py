@@ -24,7 +24,12 @@ class CooperativeUnit(models.Model):
     daily_quota_limit = models.FloatField(help_text="Max daily resource/water/medicine quota")
     contract_address = models.CharField(max_length=42, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
-
+    members = models.ManyToManyField(
+        "StakeholderUser",
+        through="CooperativeMembership",
+        related_name="cooperatives",
+        blank=True,
+    )
 
 class ResourceNodePlot(models.Model):
     coop = models.ForeignKey(CooperativeUnit, on_delete=models.CASCADE, related_name="nodes")
@@ -66,7 +71,21 @@ class AnomalyAndForecastEvent(models.Model):
     forecasted_deficit_24h = models.FloatField(default=0.0)
 
 
+
 class AgentLoopExecution(models.Model):
+    coop = models.ForeignKey(
+        CooperativeUnit,
+        on_delete=models.CASCADE,
+        related_name="agent_executions"
+    )
+    node = models.ForeignKey(
+        ResourceNodePlot,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="agent_executions"
+    )
+
     thread_id = models.CharField(max_length=64, db_index=True)
     trigger_source = models.CharField(max_length=64)
     darja_transcript = models.TextField(blank=True)
@@ -77,6 +96,11 @@ class AgentLoopExecution(models.Model):
     confidence_score = models.FloatField()
     created_at = models.DateTimeField(auto_now_add=True)
 
+    class Meta:
+        indexes = [
+            models.Index(fields=["coop", "-created_at"]),
+        ]
+
 
 class OnChainZKReceipt(models.Model):
     agent_execution = models.OneToOneField(AgentLoopExecution, on_delete=models.CASCADE, related_name="zk_receipt")
@@ -86,3 +110,35 @@ class OnChainZKReceipt(models.Model):
     block_number = models.PositiveIntegerField()
     network_name = models.CharField(max_length=32, default="Foundry-Anvil-Local")
     is_verified_on_chain = models.BooleanField(default=True)
+
+
+class CooperativeMembership(models.Model):
+    class MembershipRole(models.TextChoices):
+        MEMBER = "MEMBER", "Cooperative Member"
+        MANAGER = "MANAGER", "Cooperative Manager"
+
+    user = models.ForeignKey(
+        StakeholderUser,
+        on_delete=models.CASCADE,
+        related_name="cooperative_memberships",
+    )
+    cooperative = models.ForeignKey(
+        CooperativeUnit,
+        on_delete=models.CASCADE,
+        related_name="memberships",
+    )
+    role = models.CharField(
+        max_length=16,
+        choices=MembershipRole.choices,
+        default=MembershipRole.MEMBER,
+    )
+    joined_at = models.DateTimeField(auto_now_add=True)
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["user", "cooperative"],
+                name="unique_user_cooperative_membership",
+            )
+        ]

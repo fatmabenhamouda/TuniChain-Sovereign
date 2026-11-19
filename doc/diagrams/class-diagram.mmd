@@ -1,0 +1,79 @@
+
+classDiagram
+    class StakeholderUser {
+        +username
+        +email
+        +role
+        +governorate
+        +wallet_address
+        +preferred_dialect
+    }
+
+    class CooperativeUnit {
+        +UUID id
+        +name
+        +governorate
+        +track_domain
+        +daily_quota_limit
+        +contract_address
+        +created_at
+    }
+
+    class CooperativeMembership {
+        +role
+        +joined_at
+        +is_active
+    }
+
+    class ResourceNodePlot {
+        +node_code
+        +crop_or_sector_type
+        +allocated_share_pct
+        +is_valve_or_dispatch_active
+    }
+
+    class TelemetryReading {
+        +timestamp
+        +metric_type
+        +value
+        +ingestion_protocol
+    }
+
+    class AnomalyAndForecastEvent {
+        +detected_at
+        +anomaly_type
+        +severity
+        +isolation_forest_score
+        +forecasted_deficit_24h
+    }
+
+    class AgentLoopExecution {
+        +thread_id
+        +trigger_source
+        +darja_transcript
+        +parsed_intent_json
+        +mcp_tools_invoked
+        +skills_executed
+        +final_recommendation
+        +confidence_score
+        +created_at
+    }
+
+    class OnChainZKReceipt {
+        +zk_commitment_hash
+        +public_inputs_json
+        +tx_hash
+        +block_number
+        +network_name
+        +is_verified_on_chain
+    }
+
+    StakeholderUser "1" --> "0..*" ResourceNodePlot : owns
+    CooperativeUnit "1" --> "0..*" ResourceNodePlot : contains
+    StakeholderUser "1" --> "0..*" CooperativeMembership : has
+    CooperativeUnit "1" --> "0..*" CooperativeMembership : has
+    ResourceNodePlot "1" --> "0..*" TelemetryReading : receives
+    ResourceNodePlot "1" --> "0..*" AnomalyAndForecastEvent : generates
+    CooperativeUnit "1" --> "0..*" AgentLoopExecution : has
+    ResourceNodePlot "0..1" --> "0..*" AgentLoopExecution : concerns
+    AgentLoopExecution "1" --> "0..1" OnChainZKReceipt : produces
