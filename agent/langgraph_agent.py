@@ -74,7 +74,7 @@ def run_sovereign_agent_loop(initial_state: SovereignAgentState) -> SovereignAge
         f"Parsed Darja request for {gov} (Node {state['node_code']}). "
         f"Anomaly status: {state['anomaly_report']['severity']} "
         f"(confidence={state['anomaly_report']['anomaly_confidence']}). "
-        f"MCP approved {mcp_res['recommended_units']} units (<= {mcp_res['max_daily_quota']} max quota). "
+        f"MCP recommended {mcp_res['recommended_units']} units (<= {mcp_res['max_daily_quota']} max quota). "
         f"Anchored ZK Commitment {state['zk_receipt']['zk_commitment_hash'][:18]}... "
         f"in Tx {state['zk_receipt']['tx_hash'][:18]}..."
     )
