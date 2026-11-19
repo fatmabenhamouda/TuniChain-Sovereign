@@ -1,0 +1,20 @@
+
+sequenceDiagram
+    actor User as Utilisateur
+    participant Client as Client HTTP
+    participant API as Django RegisterView
+    participant Serializer as RegisterSerializer
+    participant DB as PostgreSQL
+
+    User->>Client: Saisit username, email et password
+    Client->>API: POST /api/auth/register/
+    API->>Serializer: Valide les données
+    Serializer->>Serializer: Vérifie les champs et le mot de passe
+    Serializer-->>API: Données validées
+    API->>Serializer: create(validated_data)
+    Serializer->>DB: Crée StakeholderUser
+    Note over Serializer,DB: role = COOP_MEMBER<br/>Mot de passe hashé avec set_password()
+    DB-->>Serializer: Utilisateur enregistré
+    Serializer-->>API: Retourne le nouvel utilisateur
+    API-->>Client: Réponse HTTP 201 Created
+    Client-->>User: Confirmation de l'inscription

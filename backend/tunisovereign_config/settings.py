@@ -39,6 +39,7 @@ INSTALLED_APPS = [
     # Applications externes
     'rest_framework',
     'corsheaders',
+    'django_extensions',
 
     # Application métier TuniChain
     'tunisovereign_core.apps.TunisovereignCoreConfig',
