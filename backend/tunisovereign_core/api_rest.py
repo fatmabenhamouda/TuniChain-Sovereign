@@ -175,30 +175,52 @@ class CooperativeUnitSerializer(serializers.ModelSerializer):
     class Meta:
         model = CooperativeUnit
         fields = "__all__"
+        read_only_fields = ("id", "created_at")
 
 
 class ResourceNodePlotSerializer(serializers.ModelSerializer):
     class Meta:
         model = ResourceNodePlot
         fields = "__all__"
+        read_only_fields = ("id", "owner", "coop")
 
 
 class TelemetryReadingSerializer(serializers.ModelSerializer):
     class Meta:
         model = TelemetryReading
         fields = "__all__"
+        read_only_fields = ("id", "timestamp", "value", "ingestion_protocol")
 
 
 class AnomalyAndForecastEventSerializer(serializers.ModelSerializer):
     class Meta:
         model = AnomalyAndForecastEvent
         fields = "__all__"
+        read_only_fields = (
+            "id",
+            "node",
+            "detected_at",
+            "anomaly_type",
+            "severity",
+            "isolation_forest_score",
+            "forecasted_deficit_24h",
+        )
 
 
 class OnChainZKReceiptSerializer(serializers.ModelSerializer):
     class Meta:
         model = OnChainZKReceipt
         fields = "__all__"
+        read_only_fields = (
+            "id",
+            "agent_execution",
+            "zk_commitment_hash",
+            "public_inputs_json",
+            "tx_hash",
+            "block_number",
+            "network_name",
+            "is_verified_on_chain",
+        )
 
 
 class AgentLoopExecutionSerializer(serializers.ModelSerializer):
@@ -207,6 +229,21 @@ class AgentLoopExecutionSerializer(serializers.ModelSerializer):
     class Meta:
         model = AgentLoopExecution
         fields = "__all__"
+        read_only_fields = (
+            "id",
+            "coop",
+            "node",
+            "thread_id",
+            "trigger_source",
+            "darja_transcript",
+            "parsed_intent_json",
+            "mcp_tools_invoked",
+            "skills_executed",
+            "final_recommendation",
+            "confidence_score",
+            "created_at",
+        )
+
 
 
 # ============================================================================
