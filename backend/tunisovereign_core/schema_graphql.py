@@ -1,6 +1,14 @@
+
 import strawberry
 from typing import List, Optional
 from strawberry.dataloader import DataLoader
+from strawberry.types import Info
+from asgiref.sync import sync_to_async
+
+from tunisovereign_core.models import (
+    CooperativeUnit,
+    AgentLoopExecution,
+)
 
 
 @strawberry.type
@@ -31,38 +39,77 @@ class GovernorateCoopGraphType:
     recent_agent_executions: List[AgentExecutionType]
 
 
-async def batch_load_executions(keys: List[str]) -> List[List[AgentExecutionType]]:
-    # DataLoader batch function preventing N+1 SQL queries across governorates
-    return [[] for _ in keys]
+@sync_to_async
+def batch_load_executions(coop_ids: List[str]):
+    executions = (
+    AgentLoopExecution.objects
+        .filter(coop_id__in=coop_ids)
+        .select_related("zk_receipt")
+        .order_by("-created_at")
+    )
+        
+    results = {str(coop_id): [] for coop_id in coop_ids}
+
+    for execution in executions:
+        receipt = getattr(execution, "zk_receipt", None)
+
+        receipt_data = None
+        if receipt:
+            receipt_data = ZKReceiptType(
+                zk_commitment_hash=receipt.zk_commitment_hash,
+                tx_hash=receipt.tx_hash,
+                block_number=receipt.block_number,
+                network_name=receipt.network_name,
+                is_verified_on_chain=receipt.is_verified_on_chain,
+            )
+
+        results[str(execution.coop_id)].append(
+            AgentExecutionType(
+                thread_id=execution.thread_id,
+                trigger_source=execution.trigger_source,
+                darja_transcript=execution.darja_transcript,
+                final_recommendation=execution.final_recommendation,
+                confidence_score=execution.confidence_score,
+                zk_receipt=receipt_data,
+            )
+        )
+
+    return [results[str(coop_id)] for coop_id in coop_ids]
 
 
 @strawberry.type
 class Query:
+
     @strawberry.field
-    def governorate_cooperatives(self, governorate: Optional[str] = None) -> List[GovernorateCoopGraphType]:
-        sample_receipt = ZKReceiptType(
-            zk_commitment_hash="0x8f4e2b9a1c3d5e7f00112233445566778899aabbccddeeff0011223344556677",
-            tx_hash="0x3a91c8d72b1e4f09182736455463728190abcdef1234567890abcdef12345678",
-            block_number=142,
-            network_name="Foundry-Anvil-Local",
-            is_verified_on_chain=True,
+    async def governorate_cooperatives(
+        self,
+        info: Info,
+        governorate: Optional[str] = None,
+    ) -> List[GovernorateCoopGraphType]:
+
+        cooperatives = await sync_to_async(
+            lambda: list(
+                CooperativeUnit.objects.filter(
+                    **({"governorate__iexact": governorate} if governorate else {})
+                )
+            )
+        )()
+
+        loader = DataLoader(load_fn=batch_load_executions)
+
+        executions_by_coop = await loader.load_many(
+            [str(coop.id) for coop in cooperatives]
         )
-        sample_exec = AgentExecutionType(
-            thread_id="thread-kasserine-001",
-            trigger_source="Darja_Voice_and_gRPC_Anomaly",
-            darja_transcript="Ya khouya el sonda fi Sabiba habtet barcha wel zitoun atchan",
-            final_recommendation="Authorized 3,150L emergency drip release for Plot KAS-04 (within 4,200L quota).",
-            confidence_score=0.94,
-            zk_receipt=sample_receipt,
-        )
+
         return [
             GovernorateCoopGraphType(
-                name="GDA Sbeitla & Sabiba Sovereign Water Co-op",
-                governorate=governorate or "Kasserine",
-                track_domain="Track_01_TunicChain_Water_Agri",
-                daily_quota_limit=4200.0,
-                recent_agent_executions=[sample_exec],
+                name=coop.name,
+                governorate=coop.governorate,
+                track_domain=coop.track_domain,
+                daily_quota_limit=coop.daily_quota_limit,
+                recent_agent_executions=executions,
             )
+            for coop, executions in zip(cooperatives, executions_by_coop)
         ]
 
 

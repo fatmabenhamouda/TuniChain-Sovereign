@@ -30,6 +30,9 @@ from tunisovereign_core.api_rest import (
     RegisterView,
 )
 
+from strawberry.django.views import AsyncGraphQLView
+from tunisovereign_core.schema_graphql import schema
+
 # Router REST API
 router = DefaultRouter()
 router.register("cooperatives", CooperativeUnitViewSet, basename="cooperative")
@@ -48,6 +51,9 @@ urlpatterns = [
     # REST API
     path("api/v1/", include(router.urls)),
 
+    # GraphQL API
+    path("graphql/", AsyncGraphQLView.as_view(schema=schema), name="graphql"),
+   
     # AI Agent - Tunisian Darja
     path("api/v1/darja-intent/", darja_intent_webhook, name="darja_intent"),
 ]
